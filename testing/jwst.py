@@ -25,6 +25,15 @@ nircam_mask_directories = {'mask210r':'NIRCAM_MASK210R/NIRCAM-',
                     'moda':'NIRCAM_modA/NIRCAM-','modb':'NIRCAM_modB/NIRCAM-',
                     'modab':'NIRCAM_modAB_mean/NIRCAM-'}
 
+#model directory structure different from filter directories
+
+model_nircam_mask_directories = {'mask210r':'JWST_coron_NIRCAM_MASK210R/',
+                    'mask335r':'JWST_coron_NIRCAM_MASK335R/',
+                    'mask430r':'JWST_coron_NIRCAM_MASK430R/',
+                    'masklwb':'JWST_coron_NIRCAM_MASKLWD/',
+                    'maskswb':'JWST_coron_NIRCAM_MASKSWB/',
+                    }
+
 #Stolen from poppy
 lookuptable = {
             "O3V":   (50000, 0.0, 5.0),
@@ -97,23 +106,6 @@ def get_jwst_mag(spt,kmag,instrument,jwst_filt,filter_dir="./",jwst_mask=None,pl
     obs = Observation(src, jwst_filt,force='taper')
 
     return obs.effstim(units.VEGAMAG,vegaspec=SourceSpectrum.from_vega())
-        
-    # wvs=src.waveset.to('micron')
-    # jwstwvs=jwst_filt.waveset.to('micron')
-    
-    # #observation works differently, force to plot in microns
-    # #plot in correct wavelength units
-    # obswv=obs.waveset.to('micron');obsspec=obs.as_spectrum()
-    # if plot==True:
-    #     obsspec.plot(wavelengths=obswv,flux_unit='flam')
-    #     src.plot(wvs,flux_unit='flam');jwst_filt.plot(jwstwvs)
-    
-    # mag = -2.5*np.log10(obs.effstim('flam').value)
-    # print("effstim: {}".format(obs.effstim('flam')))
-    # mag = np.round(mag,2)
-    
-    # print("{} magnitudes".format(mag))
-    # return mag
 
 def get_filter_profiles_normalized(instrument,filter_names, mask = None,
                         filter_dir = "../filters/",plot=True):
@@ -173,7 +165,7 @@ def companion_detection_limit(host_mag,jwst_filter,contrast_curves,plot=True):
     if plot==True:
         plt.figure(figsize=(10,5))
         plt.plot(separation,companion_mag_limit)
-        plt.ylabel('Minimum Companion Mag');plt.xlabel('Separation')
+        plt.ylabel('Minimum Companion Mag');plt.xlabel('Separation (")')
         ax = plt.gca()
         ax.set_ylim(ax.get_ylim()[::-1])
         
@@ -205,3 +197,38 @@ def read_contrast_curves():
         contrast_curves[filt_file[0:5]]=[separation,interpd(separation)]
     
     return contrast_curves
+
+
+def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_dir,plot=True):
+    '''
+    A function to extract a mass interpolazation function from a grid 
+
+    Inputs: 
+    age - age of your system (in Myr)
+    distance - distance to the system (in pc)
+    companion_mags - companion magnitude detection limit, array of size n
+    jwst_filt - JWST Filter name 
+    separation - Separation  output from reead_contrast_curves(), array of size n
+    model_dir - directory pointing to ATMO_CEQ models
+
+
+    Returns: 
+    mass_limits - minimum detectible companion masses
+    '''
+
+    available_filters = get_available_filters(model_dir)
+    if jwst_filt.lower() not in available_filters:
+        print("The chosen filter is not available in this instrument configuration")
+        print("Please choose from:")
+        print(available_filters)
+
+    masses, ages, mags = read_track_for_filter(model_dir,jwst_filt);
+
+    mass_func=get_mass_func_from_mag(age,distance,masses,ages,mags)
+    mass_limits = mass_func(companion_mags)
+
+    if plot==True:
+        plt.semilogy(separation,mass_limits)
+        plt.ylabel('Mass ($M_{Jup}$)');plt.xlabel('Separation (")');
+
+    return mass_limits
