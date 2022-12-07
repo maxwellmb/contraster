@@ -73,7 +73,7 @@ def read_one_atmo_file(filename,filter_name):
 
     return mass, ages, mags
 
-def get_mass_func_from_mag(age,distance,masses,ages,mags,kind='cubic',age_interp='linear'):
+def get_mass_func_from_mag(age,distance,masses,ages,mags,kind='linear',age_interp='linear'):
     '''
     A function to extract a mass interpolazation function from a grid 
 
@@ -120,6 +120,57 @@ def get_mass_func_from_mag(age,distance,masses,ages,mags,kind='cubic',age_interp
 
     #Create the interpolation function that we want to return
     mass_func = interp1d(model_mag_interp,model_mass_interp, kind =kind,
+                        bounds_error=False,fill_value='extrapolate')
+
+    return mass_func
+
+def get_mag_func_from_mass(age,distance,masses,ages,mags,kind='linear',age_interp='linear'):
+    '''
+    A function to extract a magnitude interpolation function from a grid 
+
+    Inputs: 
+    age - age of your system (in Myr)
+    distance - distance to the system (in pc)
+    masses - your model grid masses of dimension n
+    ages - your model grid ages (Myr), a list of length n, 
+            each element a list itself of length m
+    mags - your model grid magnitudes (apparent @ 10pc), a list of length n, 
+            each element a list itself of length m
+
+    Returns: 
+    mass_func - a function that returns the masses for input apparent magnitudes at the 
+                correponding system age and distance
+    '''
+
+    ###The next bit interpolates things to the correct age:
+    model_mag_interp = []
+    model_mass_interp = []
+
+    ## At the end we should have two lists corresponding 
+    ## to the mags and magnitudes at a given age
+    for i,mass in enumerate(masses):
+
+        if age_interp == 'linear':
+            interp_func = interp1d(ages[i], mags[i], kind=kind,bounds_error=False)
+
+            #Make sure we didn't go down to below 0
+            if interp_func(age) > 0:
+                model_mag_interp.append(interp_func(age))
+                model_mass_interp.append(mass)
+                
+        elif age_interp == 'log':
+            interp_func = interp1d(np.log10(ages[i]), mags[i], kind=kind,bounds_error=False)
+
+            #Make sure we didn't go down to below 0
+            if interp_func(np.log10(age)) > 0:
+                model_mag_interp.append(interp_func(np.log10(age)))
+                model_mass_interp.append(mass)
+            
+    #Ok great, now let's adjust for distance: 
+    model_mag_interp +=  5*np.log10(distance) - 5
+
+    #Create the interpolation function that we want to return
+    mass_func = interp1d(model_mass_interp, model_mag_interp, kind =kind,
                         bounds_error=False,fill_value='extrapolate')
 
     return mass_func

@@ -10,8 +10,16 @@ import csv
 from scipy.interpolate import interp1d
 
 
+#To find the filter curves
 instrument_directories= {'nircam':"JWST_coronagraphy/",
                          'miri':"JWST_coronagraphy/MIRI/MIRI-",
+                         'nirc2':'MKO/MKO-',
+                         'niriss':'JWST_coronagraphy/NIRISS/NIRISS-',
+                         'nircam_phot':'JWST_photometry/'}
+
+#To find the models (in your ATMO2020 Directory)
+model_instrument_directories= {'nircam':"JWST_coronagraphy/",
+                         'miri':"JWST_coronagraphy/JWST_coron_MIRI/",
                          'nirc2':'MKO_WISE_IRAC/',
                          'niriss':'JWST_coronagraphy/NIRISS/NIRISS-',
                          'nircam_phot':'JWST_photometry/'}
@@ -198,7 +206,6 @@ def read_contrast_curves():
     
     return contrast_curves
 
-
 def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_dir,plot=True):
     '''
     A function to extract a mass interpolazation function from a grid 
@@ -208,7 +215,7 @@ def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_d
     distance - distance to the system (in pc)
     companion_mags - companion magnitude detection limit, array of size n
     jwst_filt - JWST Filter name 
-    separation - Separation  output from reead_contrast_curves(), array of size n
+    separation - Separation  output from read_contrast_curves(), array of size n
     model_dir - directory pointing to ATMO_CEQ models
 
 
@@ -218,13 +225,13 @@ def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_d
 
     available_filters = get_available_filters(model_dir)
     if jwst_filt.lower() not in available_filters:
-        print("The chosen filter is not available in this instrument configuration")
+        print("The chosen filter,{} , is not available in this instrument configuration".format(jwst_filt.lower()))
         print("Please choose from:")
         print(available_filters)
 
     masses, ages, mags = read_track_for_filter(model_dir,jwst_filt);
 
-    mass_func=get_mass_func_from_mag(age,distance,masses,ages,mags)
+    mass_func=get_mass_func_from_mag(age,distance,masses,ages,mags,kind='linear')
     mass_limits = mass_func(companion_mags)
 
     if plot==True:
@@ -232,3 +239,14 @@ def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_d
         plt.ylabel('Mass ($M_{Jup}$)');plt.xlabel('Separation (")');
 
     return mass_limits
+
+def detect_companion(seps,mass_limits,comp_sep,comp_mass):
+    '''
+    Return a boolean whether the companion is detected or not at its given separation. 
+    '''
+
+    mass_func = interp1d(seps,mass_limits,bounds_error=False,fill_value='extrapolate')
+    limit = mass_func(comp_sep)
+
+    return (comp_mass >= limit)
+    
