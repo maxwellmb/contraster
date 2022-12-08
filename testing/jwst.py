@@ -1,5 +1,6 @@
 import numpy as np
 from models import *
+import json
 from astropy import units as u
 import matplotlib.pyplot as plt
 
@@ -206,7 +207,8 @@ def read_contrast_curves():
     
     return contrast_curves
 
-def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_dir,plot=True):
+def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_dir,
+                        bex_model_filename=None,plot=True,verbose=False):
     '''
     A function to extract a mass interpolazation function from a grid 
 
@@ -223,22 +225,50 @@ def generate_mass_curve(age,distance,companion_mags,jwst_filt,separation,model_d
     mass_limits - minimum detectible companion masses
     '''
 
-    available_filters = get_available_filters(model_dir)
+    available_filters = get_available_atmo_filters(model_dir)
     if jwst_filt.lower() not in available_filters:
-        print("The chosen filter,{} , is not available in this instrument configuration".format(jwst_filt.lower()))
+        print("The chosen filter,{} , is not available in the ATMO2020 grid in this instrument configuration".format(jwst_filt.lower()))
         print("Please choose from:")
         print(available_filters)
 
-    masses, ages, mags = read_track_for_filter(model_dir,jwst_filt);
+    atmo_masses, atmo_ages, atmo_mags = read_atmo_track_for_filter(model_dir,jwst_filt);
 
-    mass_func=get_mass_func_from_mag(age,distance,masses,ages,mags,kind='linear')
+    mass_func=get_mass_func_from_mag_atmo(age,distance,atmo_masses,atmo_ages,atmo_mags,kind='linear')
     mass_limits = mass_func(companion_mags)
 
-    if plot==True:
-        plt.semilogy(separation,mass_limits)
-        plt.ylabel('Mass ($M_{Jup}$)');plt.xlabel('Separation (")');
+    if bex_model_filename is not None:         
+        if jwst_filt.lower() != 'f444w':
+            print("Right now until we fix it BEX will only take the f444w filter")
+            print("Retuning just the ATMO mass limits")
+            return mass_limits
+
+        with open(bex_model_filename, 'r') as f:
+            bex_data = json.load(f)
+        bex_ages = 10**np.array(bex_data['log(age/yr)']) / 1e6     # In Myr
+        bex_masses = np.array(bex_data['mass/mearth']) / 317.8       #In MJup
+        bex_abs_mags = np.array(bex_data[jwst_filt])
+
+        if verbose: 
+            print("Getting the bex function")
+        bex_mass_func = get_mass_func_from_mag_bex(age,distance,bex_masses,bex_ages,bex_abs_mags)
+        
+        if plot==True: 
+            plt.semilogy(separation,bex_mass_func(companion_mags))
+            plt.semilogy(separation,mass_func(companion_mags),'--')
+            plt.savefig("tmp.png",dpi=200)
+            plt.close()
+
+        if verbose: 
+            print("Combining the functions")
+        mass_limits = get_atmo_bex_masses(bex_mass_func,mass_func,companion_mags)
+
+
+    # if plot==True:
+    #     plt.semilogy(separation,mass_limits)
+    #     plt.ylabel('Mass ($M_{Jup}$)');plt.xlabel('Separation (")');
 
     return mass_limits
+
 
 def detect_companion(seps,mass_limits,comp_sep,comp_mass):
     '''
